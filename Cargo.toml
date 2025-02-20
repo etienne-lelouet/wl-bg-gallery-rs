@@ -1,0 +1,10 @@
+[package]
+name = "wl-bg-gallery-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.9.0"
+wayland-client = "0.31.8"
+wayland-protocols = "0.32.6"
+wayland-protocols-wlr = "0.3.6"
