@@ -12,19 +12,16 @@ use nix::sys::mman::mmap;
 use nix::sys::mman::ProtFlags;
 use rand::Rng;
 
-pub fn fill_buffer_random(buf: &mut[u8], stride: u32, height: u32) -> &mut[u8] {
+pub fn fill_buffer_random(buf: &mut[u8]) -> &mut[u8] {
     let mut rng = rand::rng();
-    let gcd = num::integer::gcd(stride, height);
-    for i in (0..buf.len()).step_by((gcd * 4) as usize) {
-	let red_value = rng.random_range(0..255);
-	let green_value = rng.random_range(0..255);
-	let blue_value = rng.random_range(0..255);
-	for ii in (0..gcd).step_by(4) {
-	    buf[i + ii as usize] = 255;
-	    buf[i + ii as usize + 1] = red_value;
-	    buf[i + ii as usize + 2] = green_value;
-	    buf[i + ii as usize + 2] = blue_value;
-	}
+    let red_value = rng.random_range(0..255);
+    let green_value = rng.random_range(0..255);
+    let blue_value = rng.random_range(0..255);
+    for i in (0..buf.len()).step_by(4) {
+	buf[i] = 255;
+	buf[i + 1] = red_value;
+	buf[i + 2] = green_value;
+	buf[i + 2] = blue_value;
     }
     return buf;
 }

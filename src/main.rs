@@ -19,7 +19,6 @@ use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_l
 // }
 
 fn main() {
-    let mut rng = rand::rng();
     let mut wl_app: wl_app::WlApp = wl_app::WlApp {
 	output_map: HashMap::new(),
 	supported_formats_vec: Vec::new(),
@@ -71,9 +70,10 @@ fn main() {
 
     let mut roundtrip_nr = 3;
     loop {
+	println!("making roundtrip {}", roundtrip_nr);
 	match event_queue.blocking_dispatch(&mut wl_app) {
-            Ok(_) => println!("roundtrip {} ok !", roundtrip_nr),
-            Err(_) => panic!("roundtrip {} nok", roundtrip_nr),
+	    Ok(_) => println!("roundtrip {} ok !", roundtrip_nr),
+	    Err(_) => panic!("roundtrip {} nok", roundtrip_nr),
 	};
 	roundtrip_nr += 1;
     }

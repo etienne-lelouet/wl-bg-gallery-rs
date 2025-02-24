@@ -1,9 +1,8 @@
 use wayland_client::{protocol::{wl_buffer, wl_compositor, wl_output, wl_region, wl_registry, wl_shm, wl_shm_pool, wl_surface}, Connection, Dispatch, QueueHandle};
-// use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
-use crate::{memory::{fill_buffer_random, MemoryMapping}, output::Output};
-use std::{collections::HashMap, os::fd::AsFd};
+use crate::output::Output;
+use std::collections::HashMap;
 
 pub struct WlApp {
     pub output_map: HashMap<u32, Output>,
@@ -94,35 +93,18 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, u32> for WlApp {
 	match event {
 	    zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
 		let output = state.output_map.get_mut(&data).unwrap();
-		println!("Configure event for output {}, creating and attaching buffer", output.name);
-		if width != output.mode_width as u32 || height != output.mode_height as u32 {
-		    println!("configure event suggestion is not the same as our computed screen size suggested: {}x{}: ours: {}x{} !", width, height, output.mode_width, output.mode_height);
+		println!("Configure event for output {}, serial {}, width: {}, height: {}", output.name, serial, width, height);
+		// if width != output.mode_width as u32 || height != output.mode_height as u32 {
+		//     println!("configure event suggestion is not the same as our computed screen size suggested: {}x{}: ours: {}x{} !", width, height, output.mode_width, output.mode_height);
 		//     output.mode_width = width as i32;
 		//     output.mode_height = height as i32;
+		//     output.should_update = true;
+		// }
+		if output.should_update && output.wlr_layer_surface_proxy.is_some() && output.wl_surface_proxy.is_some(){
+		    proxy.ack_configure(serial);
+		    output.render(data, &state.wl_shm.as_ref().unwrap(), &qhandle);
+		    output.should_update = false;
 		}
-		proxy.ack_configure(serial);
-
-		let shm_pool_size = output.mode_width * output.mode_height * 4;
-		output.mapping = match MemoryMapping::new(data.to_string(), shm_pool_size as usize) {
-		    Some(mapping) => Some(mapping),
-		    None => panic!("Creating buffer failed !"),
-		};
-		let wl_shm_proxy = state.wl_shm.as_ref().unwrap();
-		output.wl_shm_pool =  Some(wl_shm_proxy.create_pool(output.mapping.as_ref().unwrap().fd.as_fd(), shm_pool_size, qhandle, *data));
-		let wl_shm_pool = output.wl_shm_pool.as_ref().unwrap();
-		output.wl_buffer = Some(wl_shm_pool.create_buffer(0, output.mode_width, output.mode_height, output.mode_width * 4, wl_shm::Format::Argb8888, qhandle, *data));
-		let buffer = output.wl_buffer.as_ref().unwrap();
-		let ptr: & mut[u8];
-		let mapping = output.mapping.as_ref().unwrap();
-		unsafe {
-		    ptr = std::slice::from_raw_parts_mut::<u8>(mapping.ptr.as_ptr() as *mut u8, mapping.size);
-		}
-		fill_buffer_random(ptr, output.mode_width as u32, output.mode_height as u32);
-		let surface = output.wl_surface_proxy.as_ref().unwrap();
-		surface.set_buffer_scale(1);
-		surface.attach(Some(buffer), 0, 0);
-		surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
-		surface.commit();
 	    },
 	    zwlr_layer_surface_v1::Event::Closed => println!("close event !"),
 	    _ => todo!(),
@@ -158,23 +140,42 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 	};
 	match event {
 	    wl_output::Event::Geometry { x: _, y: _, physical_width: _, physical_height: _, subpixel: _, make, model, transform: _ } => {
+		println!("geometry event");
 		output.make = make;
 		output.model = model;
 
 	    },
 	    wl_output::Event::Mode { flags: _, width, height, refresh: _ } => {
-		output.mode_height = height;
-		output.mode_width = width;
+		println!("mode event ours: {}x{} new: {}x{}", output.mode_width, output.mode_height, width, height);
+		if output.mode_height != height {
+		    output.mode_height = height;
+		    output.should_update = true;
+		}
+
+		if output.mode_width != width {
+		    output.mode_width = width;
+		    output.should_update = true;
+		}
+		if output.should_update {
+		    output.clear();
+		}
 	    },
 	    wl_output::Event::Done => {
 		println!("Done event for for {}, getting and configuring surface", output.name);
 		let compositor_proxy = state.compositor_proxy.as_ref().unwrap();
+		if ! output.should_update {
+		    println!("received done event for surface that should not be updated");
+		    return;
+		}
 		output.wl_surface_proxy = Some(compositor_proxy.create_surface(qhandle, ()));
 		let surface_proxy = output.wl_surface_proxy.as_ref().unwrap();
 		let region = compositor_proxy.create_region(qhandle, ());
 		surface_proxy.set_input_region(Some(&region));
 		region.destroy();
 		surface_proxy.commit();
+		if let Some(ref layer_shell) = output.wlr_layer_surface_proxy {
+		    layer_shell.destroy();
+		}
 		let layer_shell = state.wlr_layer_shell_proxy.as_ref().unwrap();
 		output.wlr_layer_surface_proxy = Some(
 		    layer_shell.get_layer_surface(
@@ -190,14 +191,16 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 		layer_surface_proxy.set_size(output.mode_width as u32, output.mode_height as u32);
 		layer_surface_proxy.set_anchor(zwlr_layer_surface_v1::Anchor::all());
 		layer_surface_proxy.set_exclusive_zone(-1);
+		println!("initial commit for surface");
 		surface_proxy.commit();
 	    }
-	    wl_output::Event::Scale { factor } => println!("Scale event: {}", factor),
+	    wl_output::Event::Scale { factor } => println!("scale event : {}", factor),
 	    wl_output::Event::Name { name } => {
-		println!("Name event: {}", name);
+		println!("name event {name}");
 		output.name = name;
 	},
 	    wl_output::Event::Description { description } => {
+		println!("description event {description}");
 		output.description = description;
 	    },
 	    _ => println!("unkown event !")
@@ -278,17 +281,9 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WlApp {
 			return;
 		    },
 		};
-		if let Some(buffer) = output.wl_buffer.as_ref() {
-		    buffer.destroy();
-		}
-		if let Some(shm_pool) = output.wl_shm_pool.as_ref() {
-		    shm_pool.destroy();
-		}
-		if let Some(mapping) = output.mapping.as_ref() {
-		    if let Err(error) = mapping.destroy() {
-			panic!("error when destroying mapping {}", error);
-		    }
-		}
+		println!("destroying screen {}", output.name);
+		output.clear();
+		state.output_map.remove(&name);
 	    },
 	    _ => println!("unkown event for wl_registry")
 	}
