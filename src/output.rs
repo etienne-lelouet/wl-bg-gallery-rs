@@ -5,6 +5,7 @@ use crate::memory::MemoryMapping;
 #[derive(Debug)]
 pub struct Output {
     pub make: String,
+    pub name: String,
     pub model: String,
     pub mode_height: i32,
     pub mode_width: i32,
@@ -22,6 +23,7 @@ impl Output {
 	Self{
 	    make: String::from(""),
 	    model: String::from(""),
+	    name: String::from(""),
 	    mode_height: 0,
 	    mode_width: 0,
 	    description: String::from(""),

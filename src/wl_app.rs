@@ -2,8 +2,8 @@ use wayland_client::{protocol::{wl_buffer, wl_compositor, wl_output, wl_region, 
 // use wayland_protocols::wp::viewporter::client::{wp_viewport, wp_viewporter};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
-use crate::output::Output;
-use std::collections::HashMap;
+use crate::{memory::{fill_buffer_random, MemoryMapping}, output::Output};
+use std::{collections::HashMap, os::fd::AsFd};
 
 pub struct WlApp {
     pub output_map: HashMap<u32, Output>,
@@ -37,7 +37,7 @@ impl Dispatch<wl_region::WlRegion, ()> for WlApp {
     fn event(
         _state: &mut Self,
         _proxy: &wl_region::WlRegion,
-        event: <wl_region::WlRegion as wayland_client::Proxy>::Event,
+        _event: <wl_region::WlRegion as wayland_client::Proxy>::Event,
         _data: &(),
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
@@ -47,20 +47,27 @@ impl Dispatch<wl_region::WlRegion, ()> for WlApp {
 }
 impl Dispatch<wl_buffer::WlBuffer, u32> for WlApp {
     fn event(
-        _state: &mut Self,
+        state: &mut Self,
         _proxy: &wl_buffer::WlBuffer,
         event: <wl_buffer::WlBuffer as wayland_client::Proxy>::Event,
-        _data: &u32,
+        data: &u32,
         _conn: &Connection,
         _qhandle: &QueueHandle<Self>,
     ) {
 	match event {
-	    wl_buffer::Event::Release => println!("wl_buffer release event"),
+	    wl_buffer::Event::Release => {
+		let output = state.output_map.get_mut(data).unwrap();
+		println!("buffer release event for output {}", output.name);
+		if let Some(buffer) = output.wl_buffer.as_ref() {
+		    buffer.destroy();
+		    output.wl_buffer = None;
+		}
+
+	    },
 	    _ => println!("unkown event for wl_buffer"),
 	}
     }
 }
-
 
 impl Dispatch<wl_shm_pool::WlShmPool, u32> for WlApp {
     fn event(
@@ -82,20 +89,40 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, u32> for WlApp {
         event: <zwlr_layer_surface_v1::ZwlrLayerSurfaceV1 as wayland_client::Proxy>::Event,
         data: &u32,
         _conn: &Connection,
-        _qhandle: &QueueHandle<Self>,
+        qhandle: &QueueHandle<Self>,
     ) {
-	println!("layer surface event !");
 	match event {
 	    zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
 		let output = state.output_map.get_mut(&data).unwrap();
-		println!("layer surface configure event !");
+		println!("Configure event for output {}, creating and attaching buffer", output.name);
 		if width != output.mode_width as u32 || height != output.mode_height as u32 {
 		    println!("configure event suggestion is not the same as our computed screen size suggested: {}x{}: ours: {}x{} !", width, height, output.mode_width, output.mode_height);
-		    output.mode_width = width as i32;
-		    output.mode_height = height as i32;
+		//     output.mode_width = width as i32;
+		//     output.mode_height = height as i32;
 		}
 		proxy.ack_configure(serial);
 
+		let shm_pool_size = output.mode_width * output.mode_height * 4;
+		output.mapping = match MemoryMapping::new(data.to_string(), shm_pool_size as usize) {
+		    Some(mapping) => Some(mapping),
+		    None => panic!("Creating buffer failed !"),
+		};
+		let wl_shm_proxy = state.wl_shm.as_ref().unwrap();
+		output.wl_shm_pool =  Some(wl_shm_proxy.create_pool(output.mapping.as_ref().unwrap().fd.as_fd(), shm_pool_size, qhandle, *data));
+		let wl_shm_pool = output.wl_shm_pool.as_ref().unwrap();
+		output.wl_buffer = Some(wl_shm_pool.create_buffer(0, output.mode_width, output.mode_height, output.mode_width * 4, wl_shm::Format::Argb8888, qhandle, *data));
+		let buffer = output.wl_buffer.as_ref().unwrap();
+		let ptr: & mut[u8];
+		let mapping = output.mapping.as_ref().unwrap();
+		unsafe {
+		    ptr = std::slice::from_raw_parts_mut::<u8>(mapping.ptr.as_ptr() as *mut u8, mapping.size);
+		}
+		fill_buffer_random(ptr, output.mode_width as u32, output.mode_height as u32);
+		let surface = output.wl_surface_proxy.as_ref().unwrap();
+		surface.set_buffer_scale(1);
+		surface.attach(Some(buffer), 0, 0);
+		surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
+		surface.commit();
 	    },
 	    zwlr_layer_surface_v1::Event::Closed => println!("close event !"),
 	    _ => todo!(),
@@ -119,16 +146,16 @@ impl Dispatch<wl_compositor::WlCompositor, ()> for WlApp {
 impl Dispatch<wl_output::WlOutput, u32> for WlApp {
     fn event(
         state: &mut Self,
-        _proxy: &wl_output::WlOutput,
+	_proxy: &wl_output::WlOutput,
         event: <wl_output::WlOutput as wayland_client::Proxy>::Event,
         data: &u32,
         _conn: &Connection,
-        _qhandle: &QueueHandle<Self>,
+        qhandle: &QueueHandle<Self>,
     ) {
 	let output: &mut Output = match state.output_map.get_mut(data) {
 	    Some(output) => output,
 	    None => panic!("output map does not contain output for key !"),
-};
+	};
 	match event {
 	    wl_output::Event::Geometry { x: _, y: _, physical_width: _, physical_height: _, subpixel: _, make, model, transform: _ } => {
 		output.make = make;
@@ -139,9 +166,37 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 		output.mode_height = height;
 		output.mode_width = width;
 	    },
-	    wl_output::Event::Done => println!("Done event !"),
+	    wl_output::Event::Done => {
+		println!("Done event for for {}, getting and configuring surface", output.name);
+		let compositor_proxy = state.compositor_proxy.as_ref().unwrap();
+		output.wl_surface_proxy = Some(compositor_proxy.create_surface(qhandle, ()));
+		let surface_proxy = output.wl_surface_proxy.as_ref().unwrap();
+		let region = compositor_proxy.create_region(qhandle, ());
+		surface_proxy.set_input_region(Some(&region));
+		region.destroy();
+		surface_proxy.commit();
+		let layer_shell = state.wlr_layer_shell_proxy.as_ref().unwrap();
+		output.wlr_layer_surface_proxy = Some(
+		    layer_shell.get_layer_surface(
+			&(output.wl_surface_proxy.as_ref().unwrap()),
+			Some(&(output.wl_output_proxy.as_ref().unwrap())),
+			zwlr_layer_shell_v1::Layer::Background,
+			String::from("wallpaper"),
+			qhandle,
+			*data
+		    )
+		);
+		let layer_surface_proxy = output.wlr_layer_surface_proxy.as_ref().unwrap();
+		layer_surface_proxy.set_size(output.mode_width as u32, output.mode_height as u32);
+		layer_surface_proxy.set_anchor(zwlr_layer_surface_v1::Anchor::all());
+		layer_surface_proxy.set_exclusive_zone(-1);
+		surface_proxy.commit();
+	    }
 	    wl_output::Event::Scale { factor } => println!("Scale event: {}", factor),
-	    wl_output::Event::Name { name } => println!("Name event: {}", name),
+	    wl_output::Event::Name { name } => {
+		println!("Name event: {}", name);
+		output.name = name;
+	},
 	    wl_output::Event::Description { description } => {
 		output.description = description;
 	    },
@@ -191,35 +246,51 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WlApp {
         _conn: &Connection,
         qhandle: &QueueHandle<Self>,
     ) {
-	if let wl_registry::Event::Global { name, interface, version } = event {
-	    if interface.eq("wl_output") {
+	match event {
+	    wl_registry::Event::Global { name, interface, version } => {
+		if interface.eq("wl_output") {
+		    println!("[{}] {} (v{})", name, interface, version);
+		    let mut output = Output::new();
+		    output.wl_output_proxy = Some(proxy.bind(name, version, qhandle, name));
+		    state.output_map.insert(name, output);
+		}
+
+		if interface.eq("wl_compositor") {
+		    println!("[{}] {} (v{})", name, interface, version);
+		    state.compositor_proxy = Some(proxy.bind(name, version, qhandle, ()));
+		}
+
+		if interface.eq("zwlr_layer_shell_v1") {
+		    println!("[{}] {} (v{})", name, interface, version);
+		    state.wlr_layer_shell_proxy = Some(proxy.bind(name, version, qhandle, ()));
+		}
+
+		if interface.eq("wl_shm") {
 		println!("[{}] {} (v{})", name, interface, version);
-		let mut key :u32;
-		loop {
-		    key = rand::random();
-		    if ! state.output_map.contains_key(&key) {
-			break;
+		    state.wl_shm = Some(proxy.bind(name, version, qhandle, ()));
+		}
+	    },
+	    wl_registry::Event::GlobalRemove { name } => {
+		let output = match state.output_map.get_mut(&name) {
+		    Some(output) => output,
+		    None => {
+			println!("global_remove does not concern a screen not found with key");
+			return;
+		    },
+		};
+		if let Some(buffer) = output.wl_buffer.as_ref() {
+		    buffer.destroy();
+		}
+		if let Some(shm_pool) = output.wl_shm_pool.as_ref() {
+		    shm_pool.destroy();
+		}
+		if let Some(mapping) = output.mapping.as_ref() {
+		    if let Err(error) = mapping.destroy() {
+			panic!("error when destroying mapping {}", error);
 		    }
 		}
-		let mut output = Output::new();
-		output.wl_output_proxy = Some(proxy.bind(name, version, qhandle, key));
-		state.output_map.insert(key, output);
-	    }
-
-	    if interface.eq("wl_compositor") {
-		println!("[{}] {} (v{})", name, interface, version);
-		state.compositor_proxy = Some(proxy.bind(name, version, qhandle, ()));
-	    }
-
-	    if interface.eq("zwlr_layer_shell_v1") {
-		println!("[{}] {} (v{})", name, interface, version);
-		state.wlr_layer_shell_proxy = Some(proxy.bind(name, version, qhandle, ()));
-	    }
-
-	    if interface.eq("wl_shm") {
-		println!("[{}] {} (v{})", name, interface, version);
-		state.wl_shm = Some(proxy.bind(name, version, qhandle, ()));
-	    }
+	    },
+	    _ => println!("unkown event for wl_registry")
 	}
     }
 }
