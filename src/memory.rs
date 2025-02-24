@@ -9,7 +9,7 @@ use core::ffi::c_void;
 use nix::sys::mman::mmap;
 use nix::sys::mman::ProtFlags;
 
-
+#[derive(Debug)]
 pub struct MemoryMapping {
     name: String,
     pub fd: OwnedFd,
@@ -39,8 +39,6 @@ impl MemoryMapping {
 		return None;
 	    }
 	};
-
-	println!("nonzerosize = {nonzerosize}");
 
 	unsafe {
 	    let ptr: NonNull<c_void> = match mmap(

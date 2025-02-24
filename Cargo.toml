@@ -4,9 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+image = "0.25.5"
 libc = "0.2.169"
 nix = { version = "0.29.0", features = ["fs", "mman"] }
+num = "0.4.3"
 rand = "0.9.0"
 wayland-client = "0.31.8"
-wayland-protocols = "0.32.6"
-wayland-protocols-wlr = "0.3.6"
+wayland-protocols = { version = "0.32.6", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3.6", features = ["client"] }
