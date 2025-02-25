@@ -1,5 +1,4 @@
 use std::os::fd::AsFd;
-
 use wayland_client::{protocol::{wl_buffer, wl_output, wl_shm, wl_shm_pool, wl_surface}, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
 use crate::{memory::{fill_buffer_random, MemoryMapping}, wl_app::WlApp};
@@ -19,7 +18,7 @@ pub struct Output {
     pub wl_buffer: Option<wl_buffer::WlBuffer>,
     pub mapping: Option<MemoryMapping>,
     pub serial_to_ack: u32,
-    pub should_update: bool,
+    pub should_update_config: bool,
 }
 
 impl Output {
@@ -38,17 +37,20 @@ impl Output {
 	    wl_buffer: None,
 	    mapping: None,
 	    serial_to_ack: 0,
-	    should_update: true
+	    should_update_config: true
 	}
     }
 
-    pub fn render(&mut self, key: &u32, wl_shm_proxy: &wl_shm::WlShm, qhandle: &QueueHandle<WlApp>) {
+    pub fn configure_shm_pool(&mut self, key: &u32, wl_shm_proxy: &wl_shm::WlShm, qhandle: &QueueHandle<WlApp>) {
 	let shm_pool_size = self.mode_width * self.mode_height * 4;
 	self.mapping = match MemoryMapping::new(key.to_string(), shm_pool_size as usize) {
 	    Some(mapping) => Some(mapping),
 	    None => panic!("Creating buffer failed !"),
 	};
 	self.wl_shm_pool =  Some(wl_shm_proxy.create_pool(self.mapping.as_ref().unwrap().fd.as_fd(), shm_pool_size, qhandle, *key));
+    }
+
+    pub fn render(&mut self, key: &u32, qhandle: &QueueHandle<WlApp>) {
 	let wl_shm_pool = self.wl_shm_pool.as_ref().unwrap();
 	self.wl_buffer = Some(wl_shm_pool.create_buffer(0, self.mode_width, self.mode_height, self.mode_width * 4, wl_shm::Format::Argb8888, qhandle, *key));
 	let buffer = self.wl_buffer.as_ref().unwrap();
@@ -57,13 +59,16 @@ impl Output {
 	unsafe {
 	    ptr = std::slice::from_raw_parts_mut::<u8>(mapping.ptr.as_ptr() as *mut u8, mapping.size);
 	}
+
 	fill_buffer_random(ptr);
+
 	let surface = self.wl_surface_proxy.as_ref().unwrap();
 	surface.set_buffer_scale(1);
 	surface.attach(Some(buffer), 0, 0);
 	surface.damage_buffer(0, 0, i32::MAX, i32::MAX);
 	surface.commit();
     }
+
     pub fn clear(&mut self) {
 	if let Some(ref layer_shell) = self.wlr_layer_surface_proxy {
 	    layer_shell.destroy();

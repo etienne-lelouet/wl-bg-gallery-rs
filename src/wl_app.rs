@@ -88,22 +88,15 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, u32> for WlApp {
         event: <zwlr_layer_surface_v1::ZwlrLayerSurfaceV1 as wayland_client::Proxy>::Event,
         data: &u32,
         _conn: &Connection,
-        qhandle: &QueueHandle<Self>,
+          qhandle: &QueueHandle<Self>,
     ) {
 	match event {
 	    zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
 		let output = state.output_map.get_mut(&data).unwrap();
 		println!("Configure event for output {}, serial {}, width: {}, height: {}", output.name, serial, width, height);
-		// if width != output.mode_width as u32 || height != output.mode_height as u32 {
-		//     println!("configure event suggestion is not the same as our computed screen size suggested: {}x{}: ours: {}x{} !", width, height, output.mode_width, output.mode_height);
-		//     output.mode_width = width as i32;
-		//     output.mode_height = height as i32;
-		//     output.should_update = true;
-		// }
-		if output.should_update && output.wlr_layer_surface_proxy.is_some() && output.wl_surface_proxy.is_some(){
+		if output.should_update_config && output.wlr_layer_surface_proxy.is_some() && output.wl_surface_proxy.is_some(){
 		    proxy.ack_configure(serial);
-		    output.render(data, &state.wl_shm.as_ref().unwrap(), &qhandle);
-		    output.should_update = false;
+		    output.should_update_config = false;
 		}
 	    },
 	    zwlr_layer_surface_v1::Event::Closed => println!("close event !"),
@@ -149,24 +142,25 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 		println!("mode event ours: {}x{} new: {}x{}", output.mode_width, output.mode_height, width, height);
 		if output.mode_height != height {
 		    output.mode_height = height;
-		    output.should_update = true;
+		    output.should_update_config = true;
 		}
 
 		if output.mode_width != width {
 		    output.mode_width = width;
-		    output.should_update = true;
+		    output.should_update_config = true;
 		}
-		if output.should_update {
+		if output.should_update_config {
 		    output.clear();
 		}
 	    },
 	    wl_output::Event::Done => {
-		println!("Done event for for {}, getting and configuring surface", output.name);
+		println!("Done event for for {}, getting and configuring surface and shm", output.name);
 		let compositor_proxy = state.compositor_proxy.as_ref().unwrap();
-		if ! output.should_update {
+		if ! output.should_update_config {
 		    println!("received done event for surface that should not be updated");
 		    return;
 		}
+		output.configure_shm_pool(data, state.wl_shm.as_ref().unwrap(), qhandle);
 		output.wl_surface_proxy = Some(compositor_proxy.create_surface(qhandle, ()));
 		let surface_proxy = output.wl_surface_proxy.as_ref().unwrap();
 		let region = compositor_proxy.create_region(qhandle, ());
