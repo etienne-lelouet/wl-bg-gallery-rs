@@ -1,4 +1,4 @@
-use std::os::fd::AsFd;
+use std::{os::fd::AsFd, time::Instant};
 use wayland_client::{protocol::{wl_buffer, wl_output, wl_shm, wl_shm_pool, wl_surface}, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
 use crate::{memory::{fill_buffer_random, MemoryMapping}, wl_app::WlApp};
@@ -19,6 +19,7 @@ pub struct Output {
     pub mapping: Option<MemoryMapping>,
     pub serial_to_ack: u32,
     pub should_update_config: bool,
+    pub next_redraw: Option<Instant>,
 }
 
 impl Output {
@@ -37,7 +38,8 @@ impl Output {
 	    wl_buffer: None,
 	    mapping: None,
 	    serial_to_ack: 0,
-	    should_update_config: true
+	    should_update_config: true,
+	    next_redraw: None
 	}
     }
 
@@ -92,5 +94,7 @@ impl Output {
 	    }
 	    self.mapping = None;
 	}
+	self.should_update_config = true;
+	self.next_redraw = None;
     }
 }
