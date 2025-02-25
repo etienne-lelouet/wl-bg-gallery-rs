@@ -88,7 +88,7 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, u32> for WlApp {
         event: <zwlr_layer_surface_v1::ZwlrLayerSurfaceV1 as wayland_client::Proxy>::Event,
         data: &u32,
         _conn: &Connection,
-          qhandle: &QueueHandle<Self>,
+        _qhandle: &QueueHandle<Self>,
     ) {
 	match event {
 	    zwlr_layer_surface_v1::Event::Configure { serial, width, height } => {
