@@ -1,22 +1,13 @@
 pub mod wl_app;
 pub mod output;
 pub mod memory;
-use memory::MemoryMapping;
+pub mod background_image;
+
+use background_image::{fit_image_to_screen, open_and_decode_image};
+use timer::Timer;
 use wl_app::WlApp;
-use output::Output;
 use wayland_client::{protocol::{wl_display::WlDisplay, wl_shm}, ConnectError::*, Connection};
-use std::{collections::HashMap, io::stdin, os::fd::AsFd};
-use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
-
-// use std::fs::File;
-// use image::ImageReader;
-
-// fn print_file_metadata(file: &File) -> () {
-//     match file.metadata() {
-//         Ok(metadata) => println!("file len: {}", metadata.len()),
-//         Err(err) => println!("Error when fetching metadata : {}", err),
-//     }
-// }
+use std::{collections::HashMap, thread, time::Duration};
 
 fn main() {
     let mut wl_app: wl_app::WlApp = wl_app::WlApp {
@@ -55,7 +46,7 @@ fn main() {
     }
 
     match event_queue.roundtrip(&mut wl_app) {
-        Err(_) => panic!("roundtrip 2 nok"),
+	Err(_) => panic!("roundtrip 2 nok"),
 	Ok(_) => println!("roundtrip 2 ok"),
     }
 
@@ -68,13 +59,21 @@ fn main() {
 	panic!("could not find Argb8888 in supported formats vec");
     }
 
+    let timer = Timer::new();
+
     let mut roundtrip_nr = 3;
     loop {
 	println!("making roundtrip {}", roundtrip_nr);
-	match event_queue.blocking_dispatch(&mut wl_app) {
+	match event_queue.roundtrip(&mut wl_app) {
 	    Ok(_) => println!("roundtrip {} ok !", roundtrip_nr),
 	    Err(_) => panic!("roundtrip {} nok", roundtrip_nr),
 	};
+	for (key, output) in wl_app.output_map.iter_mut() {
+	    if output.should_update_config == false { // && no callback scheduled
+		output.render(key, &qh);
+	    }
+	}
 	roundtrip_nr += 1;
+	thread::sleep(Duration::new(5, 0));
     }
 }

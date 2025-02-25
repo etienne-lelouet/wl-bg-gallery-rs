@@ -2,7 +2,6 @@ use std::num::NonZeroUsize;
 use std::os::fd::OwnedFd;
 use std::ptr::NonNull;
 use libc::size_t;
-use nix::sys::mman::shm_unlink;
 use nix::sys::mman::MapFlags;
 use nix::sys::stat::Mode;
 use nix::sys::mman::shm_open;
