@@ -6,10 +6,19 @@ pub mod background_image;
 use nix::sys::epoll;
 use wl_app::WlApp;
 use wayland_client::{protocol::{wl_display::WlDisplay, wl_shm}, ConnectError::*, Connection};
-use std::{collections::HashMap, os::fd::AsFd, thread, time::{Duration, Instant}};
+use std::{collections::HashMap, time::{Duration, Instant}};
 
 fn main() {
-    let bg_duration = Duration::new(5, 0);
+    let file_paths = ["/home/etienne/Downloads/bigmontparnasse.webp", "/home/etienne/Downloads/montparnasse.jpg"];
+    let bg_duration_as_duration = Duration::new(5, 0);
+    let mut next_timer = bg_duration_as_duration;
+    let bg_duration_as_epoll_timer = match epoll::EpollTimeout::try_from(bg_duration_as_duration.as_millis()) {
+        Ok(duration) => duration,
+        Err(error) => panic!("Time between updates is incorrect: {}", error),
+    };
+    let acceptable_delta = Duration::new(1, 0);
+
+
     let epoll = match epoll::Epoll::new(epoll::EpollCreateFlags::empty()) {
         Ok(epoll) => epoll,
         Err(error) => panic!("error when creating an epoll instance: {}", error)
@@ -46,7 +55,7 @@ fn main() {
     println!("parsing globals");
 
     match event_queue.roundtrip(&mut wl_app) {
-        Err(_) => panic!("roundtrip 1 nok"),
+	Err(_) => panic!("roundtrip 1 nok"),
 	Ok(_) => println!("roundtrip 1 ok"),
     }
 
@@ -85,7 +94,12 @@ fn main() {
 	    panic!("error when flushing event queue : {}", error);
 	}
 
-	let nfd = match epoll.wait(&mut events, 5000 as u16) {
+	let timeout = match epoll::EpollTimeout::try_from(next_timer) {
+	    Ok(timeout) => timeout,
+	    Err(_) => bg_duration_as_epoll_timer,
+	};
+
+	let nfd = match epoll.wait(&mut events, timeout) {
 	    Ok(res) => res,
 	    Err(epollerror) => panic!("error when waiting on epoll: {}", epollerror)
 	};
@@ -107,18 +121,23 @@ fn main() {
 	}}
 
 	let now = Instant::now();
+
 	for (key,output) in wl_app.output_map.iter_mut() {
 	    if output.should_update_config == false {
 		match output.next_redraw {
 		    Some(next_redraw) => {
-			if now < next_redraw {
+			if now + acceptable_delta < next_redraw {
+			    let next_redraw_delta = next_redraw - now;
+			    if next_redraw_delta < next_timer {
+				next_timer = next_redraw_delta;
+			    }
 			    continue;
 			}
 		    },
 		    None => (),
 		}
 		output.render(key, &qh);
-		output.next_redraw = Some(now + bg_duration);
+		output.next_redraw = Some(now + bg_duration_as_duration);
 	    }
 	}
     }
