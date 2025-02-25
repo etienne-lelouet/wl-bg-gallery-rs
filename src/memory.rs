@@ -1,7 +1,7 @@
 use std::num::NonZeroUsize;
 use std::os::fd::OwnedFd;
 use std::ptr::NonNull;
-use libc::size_t;
+use libc::off_t;
 use nix::sys::mman::MapFlags;
 use nix::sys::stat::Mode;
 use nix::sys::mman::shm_open;
@@ -9,32 +9,17 @@ use nix::fcntl::OFlag;
 use core::ffi::c_void;
 use nix::sys::mman::mmap;
 use nix::sys::mman::ProtFlags;
-use rand::Rng;
-
-pub fn fill_buffer_random(buf: &mut[u8]) -> &mut[u8] {
-    let mut rng = rand::rng();
-    let red_value = rng.random_range(0..255);
-    let green_value = rng.random_range(0..255);
-    let blue_value = rng.random_range(0..255);
-    for i in (0..buf.len()).step_by(4) {
-	buf[i] = 255;
-	buf[i + 1] = red_value;
-	buf[i + 2] = green_value;
-	buf[i + 2] = blue_value;
-    }
-    return buf;
-}
 
 #[derive(Debug)]
 pub struct MemoryMapping {
     name: String,
     pub fd: OwnedFd,
     pub ptr: NonNull<c_void>,
-    pub size: usize
+    pub size: NonZeroUsize
 }
 
 impl MemoryMapping {
-    pub fn new(name: String, size: usize) -> Option<Self> {
+    pub fn new(name: String, size: NonZeroUsize) -> Option<Self> {
 	let fd = match shm_open(name.as_str(), OFlag::O_RDWR | OFlag::O_CREAT, Mode::S_IRWXU) {
 	    Ok(result) => result,
 	    Err(error) => {
@@ -43,23 +28,20 @@ impl MemoryMapping {
 	    }
 	};
 
-	if let Result::Err(errno) = nix::unistd::ftruncate(&fd, size as i64) {
+	let size_as_off_t: off_t = match off_t::try_from(size.get()) {
+	    Ok(size_as_off_t) => size_as_off_t,
+	    Err(error) => panic!("failed to convert usize to off_t: {}", error),
+};
+
+	if let Result::Err(errno) = nix::unistd::ftruncate(&fd, size_as_off_t) {
 	    println!("Failed to ftruncate ! : {}", errno);
 	    return None;
 	}
 
-	let nonzerosize= match NonZeroUsize::new(size) {
-	    Some(nonzerosize) => nonzerosize,
-	    None => {
-		println!("size is 0 !");
-		return None;
-	    }
-	};
-
 	unsafe {
 	    let ptr: NonNull<c_void> = match mmap(
 		None,
-		nonzerosize,
+		size,
 		ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
 		MapFlags::MAP_SHARED,
 		&fd, 0
@@ -81,7 +63,7 @@ impl MemoryMapping {
 
     pub fn destroy(&self) -> Result<(), nix::errno::Errno>{
 	unsafe {
-	    if let Err(error) = nix::sys::mman::munmap(self.ptr, self.size as size_t) {
+	    if let Err(error) = nix::sys::mman::munmap(self.ptr, self.size.get()) {
 		println!("munmap failed {}", error);
 		return Err(error);
 	    }

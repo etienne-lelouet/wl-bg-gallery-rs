@@ -1,15 +1,15 @@
-use std::{os::fd::AsFd, time::Instant};
+use std::{num::NonZeroUsize, os::fd::AsFd, time::Instant};
 use wayland_client::{protocol::{wl_buffer, wl_output, wl_shm, wl_shm_pool, wl_surface}, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
-use crate::{memory::{fill_buffer_random, MemoryMapping}, wl_app::WlApp};
+use crate::{background_image::{fill_buffer_with_image, fill_buffer_random}, memory::MemoryMapping, wl_app::WlApp};
 
 #[derive(Debug)]
 pub struct Output {
     pub make: String,
     pub name: String,
     pub model: String,
-    pub mode_height: i32,
-    pub mode_width: i32,
+    pub mode_height: u32,
+    pub mode_width: u32,
     pub description: String,
     pub wl_output_proxy: Option<wl_output::WlOutput>,
     pub wl_surface_proxy: Option<wl_surface::WlSurface>,
@@ -43,26 +43,77 @@ impl Output {
 	}
     }
 
+    pub fn get_memory_size(&self) -> NonZeroUsize {
+	let shm_pool_size_usize = match usize::try_from(self.mode_width * self.mode_height * 4) {
+	    Ok(shm_pool_size_usize) => shm_pool_size_usize,
+	    Err(err) => panic!("failed to convert shm_pool_size to usize: {}", err)
+	};
+	match NonZeroUsize::new(shm_pool_size_usize) {
+	    Some(shm_pool_size_nonzerousize) => shm_pool_size_nonzerousize,
+	    None => panic!("failed to convert shm_pool_size to non zero usize")
+	}
+    }
+
+    pub fn get_stride_i32(&self) -> i32 {
+	match i32::try_from(self.mode_width * 4) {
+	    Ok(stride) => stride,
+	    Err(err) => panic!("failed to convert stride to i32: {}", err)
+	}
+    }
+
+    pub fn get_memory_size_i32(&self) -> i32 {
+	match i32::try_from(self.get_memory_size().get()) {
+	    Ok(shm_pool_size_i32) => shm_pool_size_i32,
+	    Err(err) => panic!("failed to convert shm_pool_size to i32: {}", err)
+	}
+    }
+
     pub fn configure_shm_pool(&mut self, key: &u32, wl_shm_proxy: &wl_shm::WlShm, qhandle: &QueueHandle<WlApp>) {
-	let shm_pool_size = self.mode_width * self.mode_height * 4;
-	self.mapping = match MemoryMapping::new(key.to_string(), shm_pool_size as usize) {
+	self.mapping = match MemoryMapping::new(key.to_string(), self.get_memory_size()) {
 	    Some(mapping) => Some(mapping),
 	    None => panic!("Creating buffer failed !"),
 	};
-	self.wl_shm_pool =  Some(wl_shm_proxy.create_pool(self.mapping.as_ref().unwrap().fd.as_fd(), shm_pool_size, qhandle, *key));
+
+	self.wl_shm_pool =  Some(
+	    wl_shm_proxy.create_pool(
+		self.mapping.as_ref().unwrap().fd.as_fd(), self.get_memory_size_i32(), qhandle, *key
+	    )
+	);
     }
 
-    pub fn render(&mut self, key: &u32, qhandle: &QueueHandle<WlApp>) {
+    pub fn render(&mut self, key: &u32, qhandle: &QueueHandle<WlApp>, to_draw: Option<String>) {
 	let wl_shm_pool = self.wl_shm_pool.as_ref().unwrap();
-	self.wl_buffer = Some(wl_shm_pool.create_buffer(0, self.mode_width, self.mode_height, self.mode_width * 4, wl_shm::Format::Argb8888, qhandle, *key));
+	self.wl_buffer = Some(
+	    wl_shm_pool.create_buffer(
+		0,
+		self.mode_width as i32,
+		self.mode_height as i32,
+		self.get_stride_i32(),
+		wl_shm::Format::Argb8888,
+		qhandle,
+		*key
+	    )
+	);
+
 	let buffer = self.wl_buffer.as_ref().unwrap();
 	let ptr: & mut[u8];
 	let mapping = self.mapping.as_ref().unwrap();
 	unsafe {
-	    ptr = std::slice::from_raw_parts_mut::<u8>(mapping.ptr.as_ptr() as *mut u8, mapping.size);
+	    ptr = std::slice::from_raw_parts_mut::<u8>(
+		mapping.ptr.as_ptr() as *mut u8,
+		mapping.size.get()
+	    );
 	}
 
-	fill_buffer_random(ptr);
+	match to_draw {
+	    Some(path) => fill_buffer_with_image(
+		&path,
+		self.mode_width,
+		self.mode_height,
+		ptr
+	    ),
+	    None => fill_buffer_random(ptr),
+	};
 
 	let surface = self.wl_surface_proxy.as_ref().unwrap();
 	surface.set_buffer_scale(1);

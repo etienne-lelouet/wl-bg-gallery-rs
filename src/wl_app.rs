@@ -140,13 +140,14 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 	    },
 	    wl_output::Event::Mode { flags: _, width, height, refresh: _ } => {
 		println!("mode event ours: {}x{} new: {}x{}", output.mode_width, output.mode_height, width, height);
-		if output.mode_height != height {
-		    output.mode_height = height;
+		// unchecked cast but if the mode event contains a negative number, we have biger issues
+		if output.mode_height != height as u32 {
+		    output.mode_height = height as u32;
 		    output.should_update_config = true;
 		}
 
-		if output.mode_width != width {
-		    output.mode_width = width;
+		if output.mode_width != width as u32 {
+		    output.mode_width = width as u32;
 		    output.should_update_config = true;
 		}
 		if output.should_update_config {
@@ -182,7 +183,7 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 		    )
 		);
 		let layer_surface_proxy = output.wlr_layer_surface_proxy.as_ref().unwrap();
-		layer_surface_proxy.set_size(output.mode_width as u32, output.mode_height as u32);
+		layer_surface_proxy.set_size(output.mode_widt, output.mode_height);
 		layer_surface_proxy.set_anchor(zwlr_layer_surface_v1::Anchor::all());
 		layer_surface_proxy.set_exclusive_zone(-1);
 		println!("initial commit for surface");
