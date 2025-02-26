@@ -1,4 +1,4 @@
-use std::{fmt::Display, path::PathBuf, sync::mpsc::channel};
+use std::{fmt::Display, path::PathBuf};
 use rand::Rng;
 
 use image::{imageops::{overlay, resize}, ImageReader, RgbaImage};
