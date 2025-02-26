@@ -183,7 +183,7 @@ impl Dispatch<wl_output::WlOutput, u32> for WlApp {
 		    )
 		);
 		let layer_surface_proxy = output.wlr_layer_surface_proxy.as_ref().unwrap();
-		layer_surface_proxy.set_size(output.mode_widt, output.mode_height);
+		layer_surface_proxy.set_size(output.mode_width, output.mode_height);
 		layer_surface_proxy.set_anchor(zwlr_layer_surface_v1::Anchor::all());
 		layer_surface_proxy.set_exclusive_zone(-1);
 		println!("initial commit for surface");
