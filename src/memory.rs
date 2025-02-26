@@ -20,7 +20,7 @@ pub struct MemoryMapping {
 
 impl MemoryMapping {
     pub fn new(name: String, size: NonZeroUsize) -> Option<Self> {
-	let fd = match shm_open(name.as_str(), OFlag::O_RDWR | OFlag::O_CREAT, Mode::S_IRWXU) {
+	let fd = match shm_open(name.as_str(), OFlag::O_RDWR | OFlag::O_CREAT | OFlag::O_TRUNC, Mode::S_IRWXU) {
 	    Ok(result) => result,
 	    Err(error) => {
 		println!("Error with shm_open : {}", error);
