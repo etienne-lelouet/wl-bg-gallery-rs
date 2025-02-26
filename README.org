@@ -1,0 +1,24 @@
+* TODO
+- Filter image files based on whether or not the image crate supports them
+  (maybe already handled by ImageReader::with_guess_format).
+- Build a "preferred list" of images for each screen to avoid displaying images
+  that are too small (center of the screen, not good) or too big (downsizing,
+  not good either). Implementation ideas :
+  - For each screen, create a list sorted by preference
+    (perfect_fit, fit_threshold (further sort by how close they are to the
+    actual size ?), need_downsize, too_small (sorted by how small they are
+    compared to the screen)) => issue: at some point we will only have
+    "incompatible images" + two screens might display the same image at the same
+    time.
+  - When all the screens are detected => each screen gets to "pick" its best fit
+    from the pool of images, from highest to lowest priority for him, in a round
+    robin fashion (screen A picks highest prio for him, screen B picks highest
+    prio for him etc). Each screens sorts his list first, (can group sort by
+    screen with same / similar resolutions). => Have to find a way to remove a
+    screen from the pool. => pool is a map, each screen's sorted list is a list
+    of keys in this map ? => probably the best solution => need to pick
+    criterion for grouping screens together + criterions for when the picture
+    doesn't fit the screen exactly.
+- Make a cache, so that in case of quick monitor disconnect / reconnect, the
+  same image is displayed.
+- Configuration file (toml should be fine).
