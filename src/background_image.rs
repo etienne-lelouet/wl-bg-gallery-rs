@@ -1,14 +1,54 @@
+use std::{fmt::Display, path::PathBuf, sync::mpsc::channel};
+use rand::Rng;
+
 use image::{imageops::{overlay, resize}, ImageReader, RgbaImage};
 
-pub fn open_and_decode_image(image: &String) -> Option<RgbaImage>{
-    let image_buffer = match ImageReader::open(image) {
+pub enum BackgroundImageError {
+    ImageOpenError,
+    ImageDecodeError
+}
+
+impl Display for BackgroundImageError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	match self {
+	    BackgroundImageError::ImageOpenError => write!(f, "Error when opening image file"),
+	    BackgroundImageError::ImageDecodeError => write!(f, "Error when decoding image file"),
+	}
+    }
+}
+
+pub fn fill_buffer_random(buf: &mut[u8]) -> Result<(), BackgroundImageError> {
+    println!("in fill_buffer_random");
+    let mut rng = rand::rng();
+    let red_value = rng.random_range(0..=255);
+    let green_value = rng.random_range(0..=255);
+    let blue_value = rng.random_range(0..=255);
+    let alpha_value = rng.random_range(0..=255);
+    for i in (0..buf.len()).step_by(4) {
+	buf[i] = blue_value; // blue
+	buf[i + 1] = green_value; // green
+	buf[i + 2] = red_value; // red
+	buf[i + 3] = alpha_value; // alpha
+    }
+    return Ok(());
+}
+
+// TODO: use our defined BackgroundImageError
+pub fn open_and_decode_image(path: &PathBuf) -> Option<RgbaImage>{
+    let image_buffer = match ImageReader::open(path) {
         Ok(image_buffer) => image_buffer,
-        Err(_) => return None,
+        Err(error) => {
+	    println!("image open error: {}", error);
+	    return None
+	},
     };
 
     let dynamic_image = match image_buffer.decode() {
         Ok(dynamic_image) => dynamic_image,
-        Err(_) => return None,
+        Err(error) => {
+	    println!("image open error: {}", error);
+	    return None
+	},
     };
 
     return Some(dynamic_image.to_rgba8());
@@ -67,5 +107,33 @@ pub fn fit_image_to_screen(image: RgbaImage, screen_width: u32, screen_height: u
     if current_width < screen_width || current_height < screen_height {
 	new_image = overlay_image(&new_image, screen_width, screen_height);
     }
+    println!("new_image sizes = {:#?}", new_image.dimensions());
     return new_image;
+}
+
+pub fn fill_buffer_with_image(
+    path: &PathBuf,
+    screen_width: u32,
+    screen_height: u32,
+    buf: &mut[u8]
+) -> Result<(), BackgroundImageError> {
+    println!("in fill_buffer_with_image");
+    let mut image = match open_and_decode_image(path) {
+        Some(image) => image,
+        None => return Err(BackgroundImageError::ImageOpenError),
+    };
+    println!("Here !");
+    image = fit_image_to_screen(image, screen_width, screen_height);
+    println!("{}, {}", image.len(), buf.len());
+    assert!(image.len() == buf.len());
+    let mut index_in_target = 0;
+    for pixel in image.pixels() {
+	buf[index_in_target + 0] = pixel[2]; // B
+	buf[index_in_target + 1] = pixel[1]; // G
+	buf[index_in_target + 2] = pixel[0]; // R
+	buf[index_in_target + 3] = pixel[3]; // A
+	index_in_target = index_in_target + 4;
+    }
+    // buf.copy_from_slice(&image);
+    return Ok(());
 }
