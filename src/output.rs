@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, os::fd::AsFd, time::Instant};
+use std::{num::NonZeroUsize, os::fd::AsFd, path::PathBuf, time::Instant};
 use wayland_client::{protocol::{wl_buffer, wl_output, wl_shm, wl_shm_pool, wl_surface}, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
 use crate::{background_image::{fill_buffer_with_image, fill_buffer_random}, memory::MemoryMapping, wl_app::WlApp};
@@ -81,7 +81,7 @@ impl Output {
 	);
     }
 
-    pub fn render(&mut self, key: &u32, qhandle: &QueueHandle<WlApp>, to_draw: Option<String>) {
+    pub fn render(&mut self, key: &u32, qhandle: &QueueHandle<WlApp>, to_draw: Option<&PathBuf>) {
 	let wl_shm_pool = self.wl_shm_pool.as_ref().unwrap();
 	self.wl_buffer = Some(
 	    wl_shm_pool.create_buffer(
@@ -104,15 +104,27 @@ impl Output {
 		mapping.size.get()
 	    );
 	}
-
-	match to_draw {
-	    Some(path) => fill_buffer_with_image(
-		&path,
-		self.mode_width,
-		self.mode_height,
-		ptr
-	    ),
-	    None => fill_buffer_random(ptr),
+	// before the panic!, if the "Some" arm failed, the "None" was called automatically ??
+	let _ = match to_draw {
+	    Some(path) => {
+		println!("calling fill_buffer_with_image for output {}", self.name);
+		match fill_buffer_with_image(
+		    &path,
+		    self.mode_width,
+		    self.mode_height,
+		    ptr
+		) {
+		    Ok(_) => (),
+		    Err(error) => panic!("fill_buffer_with_image failed: {}", error)
+		}
+	    },
+	    None => {
+		println!("calling fill_buffer_random for output {}", self.name);
+		match fill_buffer_random(ptr) {
+		    Ok(_) => (),
+		    Err(error) => panic!("fill_buffer_random failed: {}", error),
+		}
+	    },
 	};
 
 	let surface = self.wl_surface_proxy.as_ref().unwrap();
