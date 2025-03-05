@@ -3,7 +3,7 @@ use std::{fs::File, io::Read};
 use image::ImageFormat;
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub enum FitType {
     BestFit,
     NextFile
@@ -54,6 +54,7 @@ const DEFAULT_PATH: &str = "~/Pictures/wallpaper";
 const DEFAULT_BG_DURATION_SECONDS: u64 = 15;
 const DEFAULT_FIT_TYPE: FitType = FitType::NextFile;
 
+#[derive(Debug)]
 pub struct Config {
     pub path: String,
     pub fit_type: FitType,
@@ -89,7 +90,6 @@ impl Config {
 	if let Some(bg_duration_seconds) = parsed_config.bg_duration_seconds {
 	    config.bg_duration_seconds = bg_duration_seconds;
 	}
-
 	return config;
     }
 

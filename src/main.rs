@@ -10,7 +10,7 @@ use wl_app::WlApp;
 
 fn main() {
     let config = Config::get_config();
-    let image_list = image_file::get_image_list(String::from("/home/etienne/Pictures/wallpaper/"), &config.authorized_formats);
+    let image_list = image_file::get_image_list(&config.path, &config.authorized_formats);
     if image_list.len() == 0 {
 	panic!("No images to set as background !");
     }
