@@ -8,6 +8,8 @@ image = { version = "0.25.5", default-features = false, features = ["jpeg", "png
 libc = "0.2.169"
 nix = { version = "0.29.0", features = ["event", "fs", "mman"] }
 rand = "0.9.0"
+serde = { version = "1.0.218", features = ["derive"] }
+toml = "0.8.20"
 wayland-client = "0.31.8"
 wayland-protocols = { version = "0.32.6", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3.6", features = ["client"] }

@@ -20,7 +20,7 @@ impl ImageFile {
     }
 }
 
-pub fn get_image_list(dir_path: String, authorized_formats: Vec<ImageFormat>) -> Vec<ImageFile> {
+pub fn get_image_list(dir_path: String, authorized_formats: &Vec<ImageFormat>) -> Vec<ImageFile> {
     let dir = match read_dir(&dir_path) {
         Ok(dir) => dir,
         Err(error) => panic!("Error when opening {} directory: {}", dir_path, error),

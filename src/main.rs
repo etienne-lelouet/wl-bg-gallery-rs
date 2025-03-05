@@ -3,21 +3,23 @@ pub mod output;
 pub mod memory;
 pub mod background_image;
 pub mod image_file;
+pub mod config;
 
-use image::ImageFormat;
+use config::Config;
 use nix::sys::epoll;
 use wl_app::WlApp;
 use wayland_client::{protocol::{wl_display::WlDisplay, wl_shm}, ConnectError::*, Connection};
 use std::{collections::HashMap, time::{Duration, Instant}};
 
+
 fn main() {
-    let authorized_formats = vec!(ImageFormat::Jpeg, ImageFormat::Png, ImageFormat::WebP);
-    let image_list = image_file::get_image_list(String::from("/home/etienne/Pictures/wallpaper/"), authorized_formats);
+    let config = Config::get_config();
+    let image_list = image_file::get_image_list(String::from("/home/etienne/Pictures/wallpaper/"), &config.authorized_formats);
     if image_list.len() == 0 {
 	panic!("no images to set as background !");
     }
 
-    let bg_duration_as_duration = Duration::new(15, 0);
+    let bg_duration_as_duration = Duration::new(config.bg_duration_seconds, 0);
     let mut next_timer = None;
     let bg_duration_as_epoll_timer = match epoll::EpollTimeout::try_from(bg_duration_as_duration.as_millis()) {
         Ok(duration) => duration,
