@@ -1,15 +1,18 @@
-use wayland_client::{protocol::{wl_buffer, wl_compositor, wl_output, wl_region, wl_registry, wl_shm, wl_shm_pool, wl_surface}, Connection, Dispatch, QueueHandle};
+use nix::sys::epoll;
+use wayland_client::{protocol::{wl_buffer, wl_compositor, wl_output, wl_region, wl_registry, wl_shm, wl_shm_pool, wl_surface}, ConnectError, Connection, Dispatch, EventQueue, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_surface_v1;
-use crate::output::Output;
-use std::collections::HashMap;
+use crate::{config::Config, image_file::ImageFile, output::Output};
+use std::{collections::HashMap, time::{Duration, Instant}};
 
 pub struct WlApp {
     pub output_map: HashMap<u32, Output>,
     pub compositor_proxy: Option<wl_compositor::WlCompositor>,
     pub wlr_layer_shell_proxy: Option<zwlr_layer_shell_v1::ZwlrLayerShellV1>,
     pub wl_shm: Option<wl_shm::WlShm>,
-    pub supported_formats_vec: Vec<wl_shm::Format>
+    pub supported_formats_vec: Vec<wl_shm::Format>,
+    pub config: Config,
+    pub image_list: Vec<ImageFile>
 }
 
 impl Dispatch<wl_shm::WlShm, ()> for WlApp {
@@ -282,5 +285,165 @@ impl Dispatch<wl_registry::WlRegistry, ()> for WlApp {
 	    },
 	    _ => println!("unkown event for wl_registry")
 	}
+    }
+}
+
+impl WlApp {
+    pub fn new(config: Config, image_list: Vec<ImageFile>) -> WlApp {
+	WlApp {
+	    output_map: HashMap::new(),
+	    supported_formats_vec: Vec::new(),
+	    wl_shm: None,
+	    compositor_proxy: None,
+	    wlr_layer_shell_proxy: None,
+	    config,
+	    image_list
+	}
+    }
+
+    pub fn run(&mut self) {
+	let mut event_queue = self.setup();
+	self.main_loop(&mut event_queue);
+    }
+
+    pub fn setup(&mut self) -> EventQueue<WlApp> {
+	let conn_result = Connection::connect_to_env();
+	let connection: Connection = match conn_result {
+	    Err(conn_error) => {
+		match conn_error {
+		    ConnectError::NoWaylandLib => panic!("Connect Error: no wayland lib"),
+		    ConnectError::InvalidFd => panic!("Connect Error: invalid fd"),
+		    ConnectError::NoCompositor => panic!("Connect Error: no compositor"),
+		}
+	    }
+	    Ok(conn) => conn
+	};
+
+	// No need for a round-trip, the display object exists implicitly with ID 1
+
+	let mut event_queue = connection.new_event_queue();
+	let display = connection.display();
+	display.get_registry(&event_queue.handle(), ());
+
+	println!("Parsing global objects");
+
+	match event_queue.roundtrip(self) {
+	    Err(_) => panic!("Parsing global objects nok"),
+	    Ok(_) => println!("Parsing global objects ok"),
+	}
+
+	println!("Parsing global objects events");
+
+	match event_queue.roundtrip(self) {
+	    Err(_) => panic!("Parsing global objects events nok"),
+	    Ok(_) => println!("Parsing global objects events ok"),
+	}
+
+	if self.supported_formats_vec.iter().any(|format| {
+	    match format {
+		wl_shm::Format::Argb8888 =>  return true,
+		_ => return false,
+	    }
+	}) == false {
+	    panic!("could not find Argb8888 in supported formats vec");
+	}
+
+	return event_queue;
+    }
+
+    pub fn main_loop(&mut self, event_queue: &mut EventQueue<WlApp>) {
+	let mut next_timer: Option<Duration> = None;
+	let bg_duration_as_duration = Duration::new(self.config.bg_duration_seconds, 0);
+	let bg_duration_as_epoll_timer = match epoll::EpollTimeout::try_from(bg_duration_as_duration.as_millis()) {
+            Ok(duration) => duration,
+            Err(error) => panic!("Time between updates is incorrect: {}", error),
+	};
+	let acceptable_delta = Duration::new(1, 0);
+	let epoll = match epoll::Epoll::new(epoll::EpollCreateFlags::empty()) {
+	    Ok(epoll) => epoll,
+	    Err(error) => panic!("error when creating an epoll instance: {}", error)
+	};
+
+	let mut index_in_image_array = 0;
+	loop {
+	    let read_guard = event_queue.prepare_read().unwrap();
+	    let fd = read_guard.connection_fd();
+
+	    if let Err(error) = epoll.delete(fd) {
+	    match error {
+		nix::errno::Errno::ENOENT => (),
+		_ => panic!("Error when deleting fd from epoll interest list: {}", error),
+	    }
+	}
+
+	if let Err(error) = epoll.add(fd, epoll::EpollEvent::new(epoll::EpollFlags::EPOLLIN, 0)) {
+	    panic!("Error when adding fd to epoll: {}", error);
+	}
+
+	let mut events = [epoll::EpollEvent::empty()];
+
+	if let Err(error) = event_queue.flush() {
+	    panic!("error when flushing event queue : {}", error);
+	}
+
+	if let None = next_timer {
+	    next_timer = Some(bg_duration_as_duration);
+	}
+
+	let timeout = match epoll::EpollTimeout::try_from(next_timer.unwrap()) {
+	    Ok(timeout) => timeout,
+	    Err(_) => bg_duration_as_epoll_timer,
+	};
+
+	println!("epoll wait for {:#?}", next_timer.unwrap());
+
+	let nfd = match epoll.wait(&mut events, timeout) {
+	    Ok(res) => res,
+	    Err(epollerror) => panic!("error when waiting on epoll: {}", epollerror)
+	};
+	println!("#########################################epoll wait finished#########################################");
+	if nfd > 0 {{
+	    let n_events = match read_guard.read() {
+		Ok(n_events) => n_events,
+		Err(error) => {
+		    println!("error on read_guard.read: {}", error);
+		    continue;
+		},
+	    };
+	    if n_events > 0 {
+		match event_queue.dispatch_pending(self) {
+		    Ok(_) => (),
+		    Err(error) => println!("dispatch event error : {}", error),
+		}
+	    }
+	}}
+
+	let now = Instant::now();
+	next_timer = None;
+	for (key,output) in self.output_map.iter_mut() {
+	    if output.should_update_config == false {
+		match output.next_redraw {
+		    Some(next_redraw) => {
+			if now + acceptable_delta < next_redraw {
+			    let next_redraw_delta = next_redraw - now;
+			    println!("output {}, next_redraw_delta: {:#?}", output.name, next_redraw_delta);
+			    if let None = next_timer {
+				next_timer = Some(next_redraw_delta);
+			    }
+			    if next_redraw_delta < next_timer.unwrap() {
+				next_timer = Some(next_redraw_delta);
+			    }
+			    continue;
+			}
+		    },
+		    None => (),
+		}
+
+		output.render(key, &event_queue.handle(), Some(&(self.image_list.get(index_in_image_array).unwrap().path)));
+		output.next_redraw = Some(Instant::now() + bg_duration_as_duration);
+		index_in_image_array = (index_in_image_array + 1) % self.image_list.len();
+	    }
+	}
+	    }
     }
 }
