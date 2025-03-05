@@ -1,7 +1,7 @@
 use std::fs::read_dir;
 use std::path::{Path, PathBuf};
 
-use image::ImageReader;
+use image::{ImageFormat, ImageReader};
 
 #[derive(Debug)]
 pub struct ImageFile {
@@ -20,7 +20,7 @@ impl ImageFile {
     }
 }
 
-pub fn get_image_list(dir_path: String) -> Vec<ImageFile> {
+pub fn get_image_list(dir_path: String, authorized_formats: Vec<ImageFormat>) -> Vec<ImageFile> {
     let dir = match read_dir(&dir_path) {
         Ok(dir) => dir,
         Err(error) => panic!("Error when opening {} directory: {}", dir_path, error),
@@ -63,6 +63,20 @@ pub fn get_image_list(dir_path: String) -> Vec<ImageFile> {
 		continue;
 	    },
 	};
+
+	let _ = match image_reader.format() {
+	    Some(format) => {
+		if ! authorized_formats.contains(&format) {
+		    println!("Format {:#?} for file {} is not authorized", format, dir_entry_path.to_string_lossy());
+		    continue;
+		}
+	    },
+	    None => {
+		println!("Failed to get format for file {}", dir_entry_path.to_string_lossy());
+		continue;
+	    }
+	};
+
 	let (width, height) = match image_reader.into_dimensions() {
 	    Ok((width, height)) => (width, height),
 	    Err(error)  => {

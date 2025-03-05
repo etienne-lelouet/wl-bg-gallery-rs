@@ -4,13 +4,15 @@ pub mod memory;
 pub mod background_image;
 pub mod image_file;
 
+use image::ImageFormat;
 use nix::sys::epoll;
 use wl_app::WlApp;
 use wayland_client::{protocol::{wl_display::WlDisplay, wl_shm}, ConnectError::*, Connection};
 use std::{collections::HashMap, time::{Duration, Instant}};
 
 fn main() {
-    let image_list = image_file::get_image_list(String::from("/home/etienne/Pictures/wallpaper/"));
+    let authorized_formats = vec!(ImageFormat::Jpeg, ImageFormat::Png, ImageFormat::WebP);
+    let image_list = image_file::get_image_list(String::from("/home/etienne/Pictures/wallpaper/"), authorized_formats);
     if image_list.len() == 0 {
 	panic!("no images to set as background !");
     }
