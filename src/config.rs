@@ -13,7 +13,8 @@ pub enum FitType {
 struct ParsedConfig {
     pub path: Option<String>,
     pub fit_type: Option<FitType>,
-    pub bg_duration_seconds: Option<u64>
+    pub bg_duration_seconds: Option<u64>,
+    pub best_fit_fact: Option<f32>
 }
 
 impl ParsedConfig {
@@ -21,7 +22,8 @@ impl ParsedConfig {
 	return ParsedConfig {
 	    path: None,
 	    fit_type: None,
-	    bg_duration_seconds: None
+	    bg_duration_seconds: None,
+	    best_fit_fact: None
 	};
     }
 
@@ -53,13 +55,15 @@ impl ParsedConfig {
 const DEFAULT_PATH: &str = "~/Pictures/wallpaper";
 const DEFAULT_BG_DURATION_SECONDS: u64 = 15;
 const DEFAULT_FIT_TYPE: FitType = FitType::NextFile;
+const DEFAULT_BEST_FIT_FACT : f32 = 1.10;
 
 #[derive(Debug)]
 pub struct Config {
     pub path: String,
     pub fit_type: FitType,
     pub bg_duration_seconds: u64,
-    pub authorized_formats: Vec<ImageFormat>
+    pub authorized_formats: Vec<ImageFormat>,
+    pub best_fit_fact: f32
 }
 
 impl Config {
@@ -72,7 +76,8 @@ impl Config {
 		ImageFormat::Jpeg,
 		ImageFormat::WebP,
 		ImageFormat::Png
-	    )
+	    ),
+	    best_fit_fact: DEFAULT_BEST_FIT_FACT
 	};
     }
 
@@ -89,6 +94,10 @@ impl Config {
 
 	if let Some(bg_duration_seconds) = parsed_config.bg_duration_seconds {
 	    config.bg_duration_seconds = bg_duration_seconds;
+	}
+
+	if let Some(best_fit_fact) = parsed_config.best_fit_fact {
+	    config.best_fit_fact = best_fit_fact;
 	}
 	return config;
     }
