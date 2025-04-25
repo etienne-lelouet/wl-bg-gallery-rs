@@ -4,9 +4,11 @@ pub mod memory;
 pub mod background_image;
 pub mod image_file;
 pub mod config;
+pub mod image_order_prio;
+pub mod test;
 
 use config::Config;
-use wl_app::WlApp;
+// use wl_app::WlApp;
 
 fn main() {
     let config = Config::get_config();
@@ -15,6 +17,11 @@ fn main() {
 	panic!("No images to set as background !");
     }
 
-    let mut wl_app = WlApp::new(config, image_list);
-    wl_app.run();
+    test::test_best_fit(&image_list, config.best_fit_fact);
+    println!("ici");
+    test::test_next_file(&image_list);
+
+
+    // let mut wl_app = WlApp::new(config, image_list);
+    // wl_app.run();
 }

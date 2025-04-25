@@ -20,6 +20,8 @@ pub struct Output {
     pub serial_to_ack: u32,
     pub should_update_config: bool,
     pub next_redraw: Option<Instant>,
+    pub image_list: Vec<usize>,
+    pub index_in_image_list: usize
 }
 
 impl Output {
@@ -39,7 +41,9 @@ impl Output {
 	    mapping: None,
 	    serial_to_ack: 0,
 	    should_update_config: true,
-	    next_redraw: None
+	    next_redraw: None,
+	    image_list: Vec::new(),
+	    index_in_image_list: 0,
 	}
     }
 

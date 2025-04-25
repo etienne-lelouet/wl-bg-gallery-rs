@@ -75,7 +75,8 @@ impl Config {
 	    authorized_formats: vec!(
 		ImageFormat::Jpeg,
 		ImageFormat::WebP,
-		ImageFormat::Png
+		ImageFormat::Png,
+		ImageFormat::Tiff
 	    ),
 	    best_fit_fact: DEFAULT_BEST_FIT_FACT
 	};
