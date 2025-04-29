@@ -107,7 +107,6 @@ pub fn fit_image_to_screen(image: RgbaImage, screen_width: u32, screen_height: u
     if current_width < screen_width || current_height < screen_height {
 	new_image = overlay_image(&new_image, screen_width, screen_height);
     }
-    println!("new_image sizes = {:#?}", new_image.dimensions());
     return new_image;
 }
 
@@ -117,14 +116,11 @@ pub fn fill_buffer_with_image(
     screen_height: u32,
     buf: &mut[u8]
 ) -> Result<(), BackgroundImageError> {
-    println!("in fill_buffer_with_image");
     let mut image = match open_and_decode_image(path) {
         Some(image) => image,
         None => return Err(BackgroundImageError::ImageOpenError),
     };
-    println!("Here !");
     image = fit_image_to_screen(image, screen_width, screen_height);
-    println!("{}, {}", image.len(), buf.len());
     assert!(image.len() == buf.len());
     let mut index_in_target = 0;
     for pixel in image.pixels() {
