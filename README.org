@@ -1,24 +1,48 @@
-* TODO
-- Filter image files based on whether or not the image crate supports them
-  (maybe already handled by ImageReader::with_guess_format).
-- Build a "preferred list" of images for each screen to avoid displaying images
-  that are too small (center of the screen, not good) or too big (downsizing,
-  not good either). Implementation ideas :
-  - For each screen, create a list sorted by preference
-    (perfect_fit, fit_threshold (further sort by how close they are to the
-    actual size ?), need_downsize, too_small (sorted by how small they are
-    compared to the screen)) => issue: at some point we will only have
-    "incompatible images" + two screens might display the same image at the same
-    time.
-  - When all the screens are detected => each screen gets to "pick" its best fit
-    from the pool of images, from highest to lowest priority for him, in a round
-    robin fashion (screen A picks highest prio for him, screen B picks highest
-    prio for him etc). Each screens sorts his list first, (can group sort by
-    screen with same / similar resolutions). => Have to find a way to remove a
-    screen from the pool. => pool is a map, each screen's sorted list is a list
-    of keys in this map ? => probably the best solution => need to pick
-    criterion for grouping screens together + criterions for when the picture
-    doesn't fit the screen exactly.
-- Make a cache, so that in case of quick monitor disconnect / reconnect, the
-  same image is displayed.
-- Configuration file (toml should be fine).
+* What ?
+
+Uses images from a directory as desktop background on wlroot-based compositors.
+
+Based on the [[https://docs.rs/image/latest/image/][image]] and [[https://docs.rs/wayland-protocols/latest/wayland_protocols/][wayland_protocols]] crates.
+
+Plugging, uplugging or changing the mode of your connected displays should not affect the proper
+working if the program.
+
+Due to the nature of the wayland protocol, it must be kept alive in background because once it is
+closed, the compositor will free all the ressources it associated with it, closing the
+pseudo-windows that are used to display the background image.
+
+* How ?
+
+Config is the result of a marge of a default config, the contents of
+~/etc/wl-bg-gallery/config.toml~, and then those in ~${HOME}/.config/wl-bg-gallery/config.toml~.
+
+If a key is specified multiple times, the latest occurrence is kept.
+
+The default config is the following :
+
+#+begin_example toml
+path = "~/Pictures/wallpaper"
+bg_duration_seconds = 60
+#+end_example
+
+- ~path~ is folder in which the program will look for pictures.
+- ~bg_duration_seconds~ in the time (in seconds) between each background change.
+
+The program parses the contents of path ~path~ at startup, and each time that it has displayed every
+picture in its list. Images whose size (in pixels) is larger than that of the screen are downscaled
+to fit while maintaining aspect ratio, and images smaller than the size of the screen are centered.
+
+* Next ?
+
+- Ideally, some sort of algorithm to assign pictures to screens in a "best fit" fashion : as of now,
+  image assignment is "first come first serve", which means that low-resolution screen can end up
+  displaying pictures larger than their resolution and vice-versa.
+- Different policieswhen the image does not perfectly fit :
+  - Stretch
+  - Mosaic
+  - Center with color gradient / gaussian blur
+  - ...
+- Improve error handling (some cases in which I used ~panic!~ might be recoverable).
+- Write some proper documentation.
+- This program is my first real attempt at writing rust, I am open to criticism (my code might not
+  be very _idiomatic_).

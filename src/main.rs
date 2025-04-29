@@ -5,7 +5,6 @@ pub mod background_image;
 pub mod image_file;
 pub mod config;
 pub mod image_order_prio;
-pub mod test;
 
 use config::Config;
 use wl_app::WlApp;
