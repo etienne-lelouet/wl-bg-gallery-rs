@@ -1,22 +1,24 @@
 * What ?
 
-Uses images from a directory as desktop background on wlroot-based compositors.
+Uses images from a directory as a background image on wlroot-based wayland compositors.
 
 Based on the [[https://docs.rs/image/latest/image/][image]] and [[https://docs.rs/wayland-protocols/latest/wayland_protocols/][wayland_protocols]] crates.
 
 Plugging, uplugging or changing the mode of your connected displays should not affect the proper
-working if the program.
+working of the program : new screens will be detected, old screens will no longer be taken into
+account, and resolution changes will trigger a redraw.
 
-Due to the nature of the wayland protocol, it must be kept alive in background because once it is
-closed, the compositor will free all the ressources it associated with it, closing the
-pseudo-windows that are used to display the background image.
+Due to the nature of the wayland protocol, the program must be kept alive because when it
+terminates, the compositor will free all the resources it associated with it, which means (among
+other things) closing the pseudo-windows that are used to display the background image.
 
 * How ?
 
-Config is the result of a marge of a default config, the contents of
-~/etc/wl-bg-gallery/config.toml~, and then those in ~${HOME}/.config/wl-bg-gallery/config.toml~.
+Config is the result of a marge of a default config, and the contents of to files :
+~/etc/wl-bg-gallery/config.toml~, and ~${HOME}/.config/wl-bg-gallery/config.toml~.
 
-If a key is specified multiple times, the latest occurrence is kept.
+If none of these files exist, the default config is used. However if parsing fails for any of these,
+the program will exit. If a key is specified multiple times, the latest occurrence is kept.
 
 The default config is the following :
 
