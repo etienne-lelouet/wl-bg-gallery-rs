@@ -12,7 +12,8 @@ impl Priority {
 	match self {
 	    Priority::BestFit => 1,
 	    Priority::Downsize { .. } => 2,
-	    Priority::Upsize { .. } => 3
+	    Priority::Upsize { .. } => 3,
+	    Priority::Any => 4,
 	}
     }
 }
@@ -54,8 +55,8 @@ impl Ord for Priority {
 	    Priority::Any => {
 		match other {
 		    Priority::BestFit => std::cmp::Ordering::Less,
-		    Priority::Downsize { fact } => std::cmp::Ordering::Less,
-		    Priority::Upsize { fact } => std::cmp::Ordering::Less,
+		    Priority::Downsize { fact: _ } => std::cmp::Ordering::Less,
+		    Priority::Upsize { fact: _ } => std::cmp::Ordering::Less,
 		    Priority::Any => std::cmp::Ordering::Equal,
 		}
 	    },
