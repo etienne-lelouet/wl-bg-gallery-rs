@@ -4,7 +4,7 @@ Uses images from a directory as a background image on wlroot-based wayland compo
 
 Based on the [[https://docs.rs/image/latest/image/][image]] and [[https://docs.rs/wayland-protocols/latest/wayland_protocols/][wayland_protocols]] crates.
 
-Plugging, uplugging or changing the mode of your connected displays should not affect the proper
+Plugging, unplugging or changing the mode of your connected displays should not affect the proper
 working of the program : new screens will be detected, old screens will no longer be taken into
 account, and resolution changes will trigger a redraw.
 
@@ -12,7 +12,16 @@ Due to the nature of the wayland protocol, the program must be kept alive becaus
 terminates, the compositor will free all the resources it associated with it, which means (among
 other things) closing the pseudo-windows that are used to display the background image.
 
-* How ?
+* How to build
+
+~cargo build --release~ to build, ~build.sh~ to install. By default, the binary is copied to
+~/usr/local/bin/~, the default config file to ~/etc/wl-bg-gallery/config.toml~, and a systemd user
+unit is created.
+
+The user unit can be enabled in your session by using ~systemctl --user enable wl-bg-gallery~. It
+will bind to ~wayland-session.target~.
+
+* How to use ?
 
 Config is the result of a marge of a default config, and the contents of to files :
 ~/etc/wl-bg-gallery/config.toml~, and ~${HOME}/.config/wl-bg-gallery/config.toml~.
@@ -37,14 +46,15 @@ to fit while maintaining aspect ratio, and images smaller than the size of the s
 * Next ?
 
 - Ideally, some sort of algorithm to assign pictures to screens in a "best fit" fashion : as of now,
-  image assignment is "first come first serve", which means that low-resolution screen can end up
+  image assignment is "first come first served", which means that low-resolution screen can end up
   displaying pictures larger than their resolution and vice-versa.
-- Different policieswhen the image does not perfectly fit :
+- Different policies when the image does not perfectly fit :
   - Stretch
   - Mosaic
   - Center with color gradient / gaussian blur
   - ...
 - Improve error handling (some cases in which I used ~panic!~ might be recoverable).
 - Write some proper documentation.
+- Look into the low image decoding performances.
 - This program is my first real attempt at writing rust, I am open to criticism (my code might not
   be very _idiomatic_).
